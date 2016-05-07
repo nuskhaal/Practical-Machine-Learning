@@ -1,0 +1,231 @@
+---
+title: "pml_jhu"
+author: "Khaja A Nusrath Ali"
+date: "7 May 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading Data in R
+
+I first download the data from the links referenced above to my computer and upload the files into R (using RStudio).
+
+Then, I took a quick look at the data and particularly at classe which is the variable I need to predict:
+
+```{r setwd("C:/Users/AB/Downloads")}
+training<-read.csv("C:/Users/AB/Downloads/pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+testing<-read.csv("C:/Users/AB/Downloads/pml-testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+str(training, list.len = 15)
+```
+
+## Tables
+
+
+```{r pressure, echo=FALSE}
+table(training$classe)
+```
+
+```{r}
+prop.table(table(training$user_name, training$classe), 1)
+```
+
+```{r}
+prop.table(table(training$classe))
+```
+
+## Data Clean Up by Removing Coloumns
+```{r}
+training <- training[, 7:160]
+testing  <- testing[, 7:160]
+```
+
+## And Removing the coloumns that are mostly NA's
+
+```{r}
+is_data  <- apply(!is.na(training), 2, sum) > 19621  # which is the number of observations
+training <- training[, is_data]
+testing  <- testing[, is_data]
+```
+
+##  split the training set into two for cross validation purposes
+```{r}
+library(caret)
+## Loading required package: lattice
+## Loading required package: ggplot2
+set.seed(3141592)
+inTrain <- createDataPartition(y=training$classe, p=0.60, list=FALSE)
+train1  <- training[inTrain,]
+train2  <- training[-inTrain,]
+dim(train1)
+dim(train2)
+```
+The caret library that I am using can be either loaded directly from CRAN using the command install.packages("caret") in R, or downloaded from the caret website. The website also includes a somewhat comprehensive documentation.
+
+At this stage, train1 is the training data set (it contains 11776 observations, or about 60% of the entire training data set), and train2 is the testing data set (it contains 7846 observations, or about 40% of the entire training data set). The dataset train2 will never be looked at, and will be used only for accuracy measurements.
+
+I can now [i] identify the "zero covariates"" from train1 and [ii] remove these "zero covariates"" from both train1 and train2:
+
+## Identifying Zero-Co Variates
+
+```{r}
+nzv_cols <- nearZeroVar(train1)
+if(length(nzv_cols) > 0) {
+  train1 <- train1[, -nzv_cols]
+  train2 <- train2[, -nzv_cols]
+}
+dim(train1)
+dim(train2)
+```
+
+This step didn't do anything as the earlier removal of NA was sufficient to clean the data. We are satisfied that we now have 59 clean covariates to build a model for classe (which is the 60th column of the data set).
+
+## Data Manipulation
+
+54 covariates is a lot of variables. Let's look at their relative importance using the output of a quick Random Forest algorithm (which we call directly using randomForest() rather than the caret package purely for speed purposes as I cannot specify the number of trees to use in caret), and plotting data importance using varImpPlot():
+
+```{r}
+library(randomForest)
+## randomForest 4.6-10
+## Type rfNews() to see new features/changes/bug fixes.
+set.seed(3141592)
+fitModel <- randomForest(classe~., data=train1, importance=TRUE, ntree=100)
+varImpPlot(fitModel)
+```
+
+Using the Accuracy and Gini graphs above, I have select the top 10 variables that I'll use for model building. If the accuracy of the resulting model is acceptable, limiting the number of variables is a good idea to ensure readability and interpretability of the model. A model with 10 parameters is certainly much more user friendly than a model with 53 parameters.
+
+Our 10 covariates are: yaw_belt, roll_belt, num_window, pitch_belt, magnet_dumbbell_y, magnet_dumbbell_z, pitch_forearm, accel_dumbbell_y, roll_arm, and roll_forearm.
+
+Let's analyze the correlations between these 10 variables. The following code calculates the correlation matrix, replaces the 1s in the diagonal with 0s, and outputs which variables have an absolute value correlation above 75%:
+
+## Correlation Matrix
+
+```{r}
+correl = cor(train1[,c("yaw_belt","roll_belt","num_window","pitch_belt","magnet_dumbbell_z","magnet_dumbbell_y","pitch_forearm","accel_dumbbell_y","roll_arm","roll_forearm")])
+diag(correl) <- 0
+which(abs(correl)>0.75, arr.ind=TRUE)
+```
+
+So I may have a problem with roll_belt and yaw_belt which have a high correlation (above 75%) with each other:
+
+```{r}
+cor(train1$roll_belt, train1$yaw_belt)
+```
+
+These two variables are on top of the Accuracy and Gini graphs, and it may seem scary to eliminate one of them. Let's be bold and without doing any PCA analysis, I've eliminate yaw_belt from the list of 10 variables and concentrate only on the remaining 9 variables.
+
+By re-running the correlation script above (eliminating yaw_belt) and outputting max(correl), I found that the maximum correlation among these 9 variables is 50.57% so I'm satisfied with this choice of relatively independent set of covariates.
+
+## Relationship between roll_belt and magnet_dumbbell_y
+
+```{r}
+qplot(roll_belt, magnet_dumbbell_y, colour=classe, data=train1)
+```
+
+This graph suggests that I could probably categorize the data into groups based on roll_belt values.
+
+Incidentally, a quick tree classifier selects roll_belt as the first discriminant among all 59 covariates (which explains why we have eliminated yaw_belt instead of roll_belt, and not the opposite: it is a "more important" covariate):
+
+## Installing rpart & rpart.plot and plotting 
+
+```{r}
+library(rpart.plot)
+fitModel <- rpart(classe~., data=train1, method="class")
+prp(fitModel)
+```
+
+However, I will not investigate tree classifiers further as the Random Forest algorithm will prove very satisfactory.
+
+## Modelling
+
+I'm now ready to create our model.
+I'm using a Random Forest algorithm, using the train() function from the caret package.
+I'm using 9 variables out of the 54 as model parameters. These variables were among the most significant variables generated by an initial Random Forest algorithm, and are roll_belt, num_window, pitch_belt, magnet_dumbbell_y, magnet_dumbbell_z, pitch_forearm, accel_dumbbell_y, roll_arm, and roll_forearm. These variable are relatively independent as the maximum correlation among them is 50.57%.
+I'm using a 2-fold cross-validation control. This is the simplest k-fold cross-validation possible and it will give a reduced computation time. Because the data set is large, using a small number of folds is justified.
+
+```{r}
+set.seed(3141592)
+fitModel <- train(classe~roll_belt+num_window+pitch_belt+magnet_dumbbell_y+magnet_dumbbell_z+pitch_forearm+accel_dumbbell_y+roll_arm+roll_forearm,
+                  data=train1,
+                  method="rf",
+                  trControl=trainControl(method="cv",number=2),
+                  prox=TRUE,
+                  verbose=TRUE,
+                  allowParallel=TRUE)
+```
+
+The above line of code required 5.2 minutes to execute on a nicely configured Windows 7 64-Bit Sager NP2650 laptop with one i7-4700MQ processor, 6MB L3 cache, 2.40GHz, and 16GB dual channel DDR3 SDRAM at 1600MHz (selecting all 54 variables would increase this time to 7.1 minutes, an increase of 37%, without increasing the accuracy of the model), so we may want to save the model generated for later use:
+
+```{r}
+saveRDS(fitModel, "modelRF.Rds")
+```
+
+I can later use this tree, by allocating it directly to a variable using the command:
+
+```{r}
+fitModel <- readRDS("modelRF.Rds")
+```
+
+## Accuracy of the Model_Confusion Matrix
+
+```{r}
+predictions <- predict(fitModel, newdata=train2)
+confusionMat <- confusionMatrix(predictions, train2$classe)
+confusionMat
+```
+
+A very impressive number for accuracy which totally validates the idea / hypothesis I made to eliminate most variables and use only 9 relatively independent covariates.
+
+## Estimation of the out-of-sample error rate
+
+The train2 test set was removed and left untouched during variable selection, training and optimizing of the Random Forest algorithm. Therefore this testing subset gives an unbiased estimate of the Random Forest algorithm's prediction accuracy (99.77% as calculated above). The Random Forest's out-of-sample error rate is derived by the formula 100% - Accuracy = 0.23%, or can be calculated directly by the following lines of code:
+
+```{r}
+missClass = function(values, predicted) {
+  sum(predicted != values) / length(values)
+}
+OOS_errRate = missClass(train2$classe, predictions)
+OOS_errRate
+```
+
+## Coursera Submission
+
+```{r}
+predictions <- predict(fitModel, newdata=testing)
+testing$classe <- predictions
+submit <- data.frame(problem_id = testing$problem_id, classe = predictions)
+write.csv(submit, file = "coursera-submission.csv", row.names = FALSE)
+```
+
+## Answers
+
+```{r}
+answers = testing$classe
+write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_",i,".txt")
+    write.table(x[i], file=filename, quote=FALSE, row.names=FALSE, col.names=FALSE)
+  }
+}
+write_files(answers)
+```
+
+
+
+## Conclusion
+
+In this assignment, I've accurately predicted the classification of 20 observations using a Random Forest algorithm trained on a subset of data using less than 20% of the covariates.
+
+The accuracy obtained (accuracy = 99.77%, and out-of-sample error = 0.23%) is obviously highly suspicious as it is never the case that machine learning algorithms are that accurate, and a mere 85% if often a good accuracy result.
+
+Either the 6 participants for whom we have data were extraordinarily obedient (for more than 19 thousand observations, a strong performance! This however might be explained by the highly controlled conditions of the data collection), or the data was somehow doctored for this class, or additional testing needs to be performed on other different participants, or Fitbit really works!
+
+It may be interesting to apply the fitModel tree from the Random Forest algorithm obtained in this paper (without any re-calibration) to a completely new set of participants, to complement and validate the analysis.
+
+This project was a very interesting introduction to practical machine learning, and opened up many doors in machine learning in R.
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
