@@ -325,24 +325,55 @@ OOS_errRate</code></pre>
 <pre><code>## [1] 0.002166709</code></pre>
 </div>
 <div id="coursera-submission" class="section level2">
-<h2>Coursera Submission</h2>
-<pre class="r"><code>predictions &lt;- predict(fitModel, newdata=testing)
-testing$classe &lt;- predictions
-submit &lt;- data.frame(problem_id = testing$problem_id, classe = predictions)
-write.csv(submit, file = &quot;coursera-submission.csv&quot;, row.names = FALSE)</code></pre>
+<div id="final-quiz" class="section level1">
+<h1>Final Quiz</h1>
+<p>The Random Forest model above is now run against the quiz dataset to produce the final project predictions.</p>
+<pre class="r"><code>setwd(&quot;C:/Users/Fred/Documents/Academic/DataScience&quot;)
+quiz.data &lt;- read.csv(&quot;./MachineLearning/Project/pml-testing.csv&quot;)
+quiz.select.data &lt;- quiz.data[,select.features[2:11]]
+quiz.answers &lt;- predict(mod.rf,newdata=quiz.select.data)
+quiz.answers</code></pre>
+<pre><code>##  [1] B A B A A E C D A A B C B A E E A B B B
+## Levels: A B C D E</code></pre>
+<p>These classifications have been submitted to the Coursera project/final quiz and received a grade of 18/20 (90%).</p>
+<p>Appendix A - Environment</p>
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>## R version 3.2.5 (2016-04-14)
+## Platform: x86_64-w64-mingw32/x64 (64-bit)
+## Running under: Windows 8.1 x64 (build 9600)
+## 
+## locale:
+## [1] LC_COLLATE=English_United States.1252 
+## [2] LC_CTYPE=English_United States.1252   
+## [3] LC_MONETARY=English_United States.1252
+## [4] LC_NUMERIC=C                          
+## [5] LC_TIME=English_United States.1252    
+## 
+## attached base packages:
+## [1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+## other attached packages:
+## [1] randomForest_4.6-12 rattle_4.1.0        rpart_4.1-10       
+## [4] caret_6.0-68        ggplot2_2.1.0       lattice_0.20-33    
+## 
+## loaded via a namespace (and not attached):
+##  [1] Rcpp_0.12.4        RColorBrewer_1.1-2 compiler_3.2.5    
+##  [4] nloptr_1.0.4       plyr_1.8.3         class_7.3-14      
+##  [7] iterators_1.0.8    tools_3.2.5        digest_0.6.9      
+## [10] lme4_1.1-12        evaluate_0.8.3     nlme_3.1-127      
+## [13] gtable_0.2.0       mgcv_1.8-12        Matrix_1.2-5      
+## [16] foreach_1.4.3      yaml_2.1.13        parallel_3.2.5    
+## [19] SparseM_1.7        e1071_1.6-7        RGtk2_2.20.31     
+## [22] stringr_1.0.0      knitr_1.12.3       MatrixModels_0.4-1
+## [25] stats4_3.2.5       grid_3.2.5         nnet_7.3-12       
+## [28] rmarkdown_0.9.5    minqa_1.2.4        reshape2_1.4.1    
+## [31] car_2.1-2          magrittr_1.5       scales_0.4.0      
+## [34] codetools_0.2-14   htmltools_0.3.5    MASS_7.3-45       
+## [37] splines_3.2.5      rpart.plot_1.5.3   pbkrtest_0.4-6    
+## [40] colorspace_1.2-6   quantreg_5.21      stringi_1.0-1     
+## [43] munsell_0.4.3</code></pre>
 </div>
-<div id="answers" class="section level2">
-<h2>Answers</h2>
-<pre class="r"><code>answers = testing$classe
-write_files = function(x){
-  n = length(x)
-  for(i in 1:n){
-    filename = paste0(&quot;problem_&quot;,i,&quot;.txt&quot;)
-    write.table(x[i], file=filename, quote=FALSE, row.names=FALSE, col.names=FALSE)
-  }
-}
-write_files(answers)</code></pre>
-</div>
+
 <div id="conclusion" class="section level2">
 <h2>Conclusion</h2>
 <p>In this assignment, I’ve accurately predicted the classification of 20 observations using a Random Forest algorithm trained on a subset of data using less than 20% of the covariates.</p>
